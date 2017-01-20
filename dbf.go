@@ -18,6 +18,7 @@ import (
 	"sync"
 )
 
+//Reader structure
 type Reader struct {
 	r                io.ReadSeeker
 	year, month, day int
@@ -38,6 +39,7 @@ type header struct {
 	Recordlen  uint16 // length of each record, in bytes
 }
 
+//NewReader - create a new reader
 func NewReader(r io.ReadSeeker) (*Reader, error) {
 	var h header
 	if _, err := r.Seek(0, 0); err != nil {
@@ -51,7 +53,7 @@ func NewReader(r io.ReadSeeker) (*Reader, error) {
 	}
 
 	var fields []Field
-	if _, err := r.Seek(0x20, 0); err != nil {
+	if _, err = r.Seek(0x20, 0); err != nil {
 		return nil, err
 	}
 	var offset uint16
@@ -76,22 +78,24 @@ func NewReader(r io.ReadSeeker) (*Reader, error) {
 		h.Headerlen, h.Recordlen, *new(sync.Mutex)}, nil
 }
 
+//ModDate - modification date
 func (r *Reader) ModDate() (int, int, int) {
 	return r.year, r.month, r.day
 }
 
-//FieldName - returns field name, read up to the first "\x00" rune, to accomodate some malformed dbf
+//FieldName retrieves field name
 func (r *Reader) FieldName(i int) (name string) {
+	//return strings.TrimRight(string(r.fields[i].Name[:]), "\x00")
 	for _, val := range string(r.fields[i].Name[:]) {
-	if val == 0 {
-		return
-	}
-	name = name + string(val)
+		if val == 0 {
+			return
+		}
+		name = name + string(val)
 	}
 	return
 }
 
-//FieldNames - return the full list of Field Names
+//FieldNames get an array with the fields' names
 func (r *Reader) FieldNames() (names []string) {
 	for i := range r.fields {
 		names = append(names, r.FieldName(i))
@@ -107,6 +111,7 @@ func (f *Field) validate() error {
 	return fmt.Errorf("Sorry, dbf library doesn't recognize field type '%c'", f.Type)
 }
 
+//Field - field description
 type Field struct {
 	Name          [11]byte // 0x0 terminated
 	Type          byte
@@ -119,7 +124,7 @@ type Field struct {
 	_ [14]byte
 }
 
-// http://play.golang.org/p/-CUbdWc6zz
+//Record http://play.golang.org/p/-CUbdWc6zz
 type Record map[string]interface{}
 
 //Read - read record i
@@ -136,7 +141,7 @@ func (r *Reader) Read(i int) (rec Record, err error) {
 	} else if deleted == '*' {
 		return nil, fmt.Errorf("record %d is deleted", i)
 	} else if deleted != ' ' {
-		return nil, fmt.Errorf("record %d contained an unexpected value in the deleted flag: %h", i, deleted)
+		return nil, fmt.Errorf("record %d contained an unexpected value in the deleted flag: %x", i, deleted)
 	}
 
 	rec = make(Record)
