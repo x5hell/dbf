@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 //Reader structure
@@ -42,7 +43,7 @@ type header struct {
 //NewReader - create a new reader
 func NewReader(r io.ReadSeeker) (*Reader, error) {
 	var h header
-	if _, err := r.Seek(0, 0); err != nil {
+	if _, err := r.Seek(0, io.SeekStart); err != nil {
 		return nil, err
 	}
 	err := binary.Read(r, binary.LittleEndian, &h)
@@ -51,15 +52,17 @@ func NewReader(r io.ReadSeeker) (*Reader, error) {
 	} else if h.Version != 0x03 {
 		return nil, fmt.Errorf("unexepected file version: %d\n", h.Version)
 	}
-
 	var fields []Field
-	if _, err = r.Seek(0x20, 0); err != nil {
+	if _, err = r.Seek(0x20, io.SeekStart); err != nil {
 		return nil, err
 	}
-	var offset uint16
-	for offset = 0x20; offset < h.Headerlen-1; offset += 32 {
+	var nfields = int(h.Headerlen/32 - 1)
+	for offset := 0; offset < nfields; offset++ {
 		f := Field{}
 		binary.Read(r, binary.LittleEndian, &f)
+		if f.Name[1] == '\x0d' { //0x0d (aka: \r) is the official fiedl list terminator
+			break
+		}
 		if err = f.validate(); err != nil {
 			return nil, err
 		}
@@ -83,6 +86,17 @@ func (r *Reader) ModDate() (int, int, int) {
 	return r.year, r.month, r.day
 }
 
+//tillzeo - strcpy - debug
+func tillzero(s []byte) (name string) {
+	for _, val := range string(s) {
+		if val == 0 {
+			return
+		}
+		name = name + string(val)
+	}
+	return
+}
+
 //FieldName retrieves field name
 func (r *Reader) FieldName(i int) (name string) {
 	//return strings.TrimRight(string(r.fields[i].Name[:]), "\x00")
@@ -103,12 +117,13 @@ func (r *Reader) FieldNames() (names []string) {
 	return
 }
 
+//validate - check if it's a valid field type
 func (f *Field) validate() error {
 	switch f.Type {
-	case 'C', 'N', 'F':
+	case 'C', 'N', 'F', 'L', 'D':
 		return nil
 	}
-	return fmt.Errorf("Sorry, dbf library doesn't recognize field type '%c'", f.Type)
+	return fmt.Errorf("Sorry, dbf library doesn't recognize field type '%c', Field: '%s'", f.Type, f.Name)
 }
 
 //Field - field description
@@ -133,8 +148,7 @@ func (r *Reader) Read(i int) (rec Record, err error) {
 	defer r.Unlock()
 
 	offset := int64(r.headerlen) + int64(r.recordlen)*int64(i)
-	r.r.Seek(offset, 0)
-
+	r.r.Seek(offset, io.SeekStart)
 	var deleted byte
 	if err = binary.Read(r.r, binary.LittleEndian, &deleted); err != nil {
 		return nil, err
@@ -143,7 +157,6 @@ func (r *Reader) Read(i int) (rec Record, err error) {
 	} else if deleted != ' ' {
 		return nil, fmt.Errorf("record %d contained an unexpected value in the deleted flag: %x", i, deleted)
 	}
-
 	rec = make(Record)
 	for i, f := range r.fields {
 		buf := make([]byte, f.Len)
@@ -152,11 +165,31 @@ func (r *Reader) Read(i int) (rec Record, err error) {
 		}
 		fieldVal := strings.TrimSpace(string(buf))
 		switch f.Type {
-		case 'F':
+		case 'F': //Float
 			rec[r.FieldName(i)], err = strconv.ParseFloat(fieldVal, 64)
-		case 'N':
+		case 'N': //Numeric
 			rec[r.FieldName(i)], err = strconv.Atoi(fieldVal)
-		default:
+		case 'L': //Logical, T,F or Space (ternary) - sorry, you've got to rune
+			if fieldVal == "T" {
+				rec[r.FieldName(i)] = 'T'
+				err = nil
+			} else if fieldVal == "F" {
+				rec[r.FieldName(i)] = 'F'
+				err = nil
+			} else if fieldVal == "" {
+				rec[r.FieldName(i)] = ' '
+			} else {
+				err = fmt.Errorf("Invalid Logical Field: %s", r.FieldName(i))
+			}
+		case 'D': //Date - YYYYYMMDD - use time.Parse (reference date Jan 2, 2006)
+			rec[r.FieldName(i)], err = time.Parse("20060102", fieldVal)
+			if err != nil {
+				if fieldVal == "" {
+					err = nil
+					rec[r.FieldName(i)] = time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC)
+				}
+			}
+		default: //String value (C, padded with blanks)
 			rec[r.FieldName(i)] = fieldVal
 		}
 		if err != nil {

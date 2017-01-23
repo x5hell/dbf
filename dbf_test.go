@@ -2,18 +2,19 @@ package dbf
 
 import (
 	"bytes"
-	"fmt"
-	"os"
 	"reflect"
 	"testing"
 )
 
+//ExampleUsage
+/*
 func ExampleUsage() {
-	dbr, _ := NewReader(os.Stdin)
+	dbr, _ := dbf.NewReader(os.Stdin)
 	// fmt.Printf("Mod date: %d-%d-%d\n", dbr.Year, dbr.Month, dbr.Day)
 	fmt.Printf("Num records: %d\n", dbr.Length)
 	// record is map[string]interface{}
 }
+*/
 
 var testFile = bytes.NewReader([]byte{
 	// Header:
