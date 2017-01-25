@@ -186,6 +186,7 @@ func (r *Reader) Read(i int) (rec Record, err error) {
 			if err != nil {
 				if fieldVal == "" {
 					err = nil
+					//this is the zero time, as far the package time, states
 					rec[r.FieldName(i)] = time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC)
 				}
 			}
