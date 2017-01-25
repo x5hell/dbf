@@ -123,7 +123,7 @@ func (f *Field) validate() error {
 	case 'C', 'N', 'F', 'L', 'D':
 		return nil
 	}
-	return fmt.Errorf("Sorry, dbf library doesn't recognize field type '%c', Field: '%s'", f.Type, f.Name)
+	return fmt.Errorf("Sorry, dbf library doesn't recognize field type '%c', Field: '%s'", f.Type, tillzero(f.Name[:]))
 }
 
 //Field - field description
