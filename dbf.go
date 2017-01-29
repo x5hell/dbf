@@ -53,15 +53,15 @@ func NewReader(r io.ReadSeeker) (*Reader, error) {
 	} else if h.Version != 0x03 {
 		return nil, fmt.Errorf("unexepected file version: %d\n", h.Version)
 	}
-	var fields []Field
 	if _, err = r.Seek(0x20, io.SeekStart); err != nil {
 		return nil, err
 	}
 	var nfields = int(h.Headerlen/32 - 1)
+	fields := make([]Field, 0, nfields)
 	for offset := 0; offset < nfields; offset++ {
 		f := Field{}
 		binary.Read(r, binary.LittleEndian, &f)
-		if f.Name[1] == '\x0d' { //0x0d (aka: \r) is the official fiedl list terminator
+		if f.Name[1] == '\x0d' { //0x0d (aka: \r) is the official field list terminator
 			break
 		}
 		if err = f.validate(); err != nil {
@@ -87,7 +87,7 @@ func (r *Reader) ModDate() (int, int, int) {
 	return r.year, r.month, r.day
 }
 
-//tillzeo - strcpy - debug
+//tillzeo - strcpy like function
 func tillzero(s []byte) (name string) {
 	for _, val := range string(s) {
 		if val == 0 {
@@ -98,7 +98,8 @@ func tillzero(s []byte) (name string) {
 	return
 }
 
-//FieldName retrieves field name
+//FieldName retrieves field name - check for NULL (0x00) termination
+// specs says that it should be 0x00 padded, but it's not always true
 func (r *Reader) FieldName(i int) (name string) {
 	//return strings.TrimRight(string(r.fields[i].Name[:]), "\x00")
 	for _, val := range string(r.fields[i].Name[:]) {
@@ -111,11 +112,13 @@ func (r *Reader) FieldName(i int) (name string) {
 }
 
 //FieldNames get an array with the fields' names
-func (r *Reader) FieldNames() (names []string) {
+func (r *Reader) FieldNames() []string {
+	//pre allocate array - to reduce risk of re-allocation with append
+	names := make([]string, 0, int(r.headerlen/32-1))
 	for i := range r.fields {
 		names = append(names, r.FieldName(i))
 	}
-	return
+	return names
 }
 
 //validate - check if it's a valid field type
