@@ -2,18 +2,19 @@ package dbf
 
 import (
 	"bytes"
-	"fmt"
-	"os"
 	"reflect"
 	"testing"
 )
 
+//ExampleUsage
+/*
 func ExampleUsage() {
-	dbr, _ := NewReader(os.Stdin)
+	dbr, _ := dbf.NewReader(os.Stdin)
 	// fmt.Printf("Mod date: %d-%d-%d\n", dbr.Year, dbr.Month, dbr.Day)
 	fmt.Printf("Num records: %d\n", dbr.Length)
 	// record is map[string]interface{}
 }
+*/
 
 var testFile = bytes.NewReader([]byte{
 	// Header:
@@ -79,7 +80,7 @@ func TestFieldTypes(t *testing.T) {
 	})
 
 	_, err := NewReader(badFieldType)
-	expectedErr := "Sorry, dbf library doesn't recognize field type 'B'"
+	expectedErr := "Sorry, dbf library doesn't recognize field type 'B', Field: 'OBJECTID'"
 	if err.Error() != expectedErr {
 		t.Fatalf("Expected error: %s\nbut got: %s", expectedErr, err)
 	}
