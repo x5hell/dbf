@@ -1,7 +1,8 @@
 package dbf
 
 // reference implementation:
-//     http://dbf.berlios.de/
+//     http://dbf.berlios.de/ - broken link
+//     info on xbase files: http://www.clicketyclick.dk/databases/xbase/format/index.html
 
 // test data: http://abs.gov.au/AUSSTATS/abs@.nsf/DetailsPage/2923.0.30.0012006?OpenDocument
 
