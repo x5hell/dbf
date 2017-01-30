@@ -174,15 +174,16 @@ func (r *Reader) Read(i int) (rec Record, err error) {
 		case 'N': //Numeric
 			rec[r.FieldName(i)], err = strconv.Atoi(fieldVal)
 		case 'L': //Logical, T,F or Space (ternary) - sorry, you've got to rune
-			if fieldVal == "T" {
+			switch {
+			case fieldVal == "Y" || fieldVal == "T":
 				rec[r.FieldName(i)] = 'T'
-				err = nil
-			} else if fieldVal == "F" {
+			case fieldVal == "N" || fieldVal == "F":
 				rec[r.FieldName(i)] = 'F'
 				err = nil
-			} else if fieldVal == "" {
+			case fieldVal == "?" || fieldVal == "":
 				rec[r.FieldName(i)] = ' '
-			} else {
+				err = nil
+			default:
 				err = fmt.Errorf("Invalid Logical Field: %s", r.FieldName(i))
 			}
 		case 'D': //Date - YYYYYMMDD - use time.Parse (reference date Jan 2, 2006)
