@@ -132,7 +132,7 @@ func (f *Field) validate() error {
 
 //Field - field description
 type Field struct {
-	Name          [11]byte // 0x0 terminated
+	Name          [11]byte // 0x0 terminated or 11 bytes long (it SHOULD be 0x00 padded)
 	Type          byte
 	Offset        uint32
 	Len           uint8
@@ -195,7 +195,7 @@ func (r *Reader) Read(i int) (rec Record, err error) {
 					rec[r.FieldName(i)] = time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC)
 				}
 			}
-		default: //String value (C, padded with blanks)
+		default: //String value (C, padded with blanks) -Notice: blanks removed by the trim above
 			rec[r.FieldName(i)] = fieldVal
 		}
 		if err != nil {
