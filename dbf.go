@@ -20,8 +20,9 @@ import (
 	"time"
 )
 
+//FlagDateAssql : read date in a near good sql format
 const (
-	flagDateassql = 1
+	FlagDateAssql = 1
 )
 
 //Reader structure
@@ -125,6 +126,14 @@ func (r *Reader) FieldNames() []string {
 	return names
 }
 
+//SetFlags - set flags to alter behaviour - binary, should be "orred"
+//returns: previous flags
+func (r *Reader) SetFlags(flags int32) int32 {
+	oldflags := r.flags
+	r.flags = flags
+	return oldflags
+}
+
 //validate - check if it's a valid field type
 func (f *Field) validate() error {
 	switch f.Type {
@@ -194,18 +203,19 @@ func (r *Reader) Read(i int) (rec Record, err error) {
 			if err != nil {
 				if fieldVal == "" {
 					err = nil
-					//this is the zero time, as far the package time, states
-					if r.flags&flagDateassql != 0 {
+					if r.flags&FlagDateAssql != 0 {
 						rec[r.FieldName(i)] = ""
 					} else {
+						//this is the zero time, as far the package time, states
 						rec[r.FieldName(i)] = time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC)
 					}
 				}
-			}
-			if r.flags&flagDateassql != 0 {
-				rec[r.FieldName(i)] = tm.Format("2006-01-02")
 			} else {
-				rec[r.FieldName(i)] = tm
+				if r.flags&FlagDateAssql != 0 {
+					rec[r.FieldName(i)] = tm.Format("2006-01-02")
+				} else {
+					rec[r.FieldName(i)] = tm
+				}
 			}
 		default: //String value (C, padded with blanks) -Notice: blanks removed by the trim above
 			rec[r.FieldName(i)] = fieldVal
@@ -215,4 +225,21 @@ func (r *Reader) Read(i int) (rec Record, err error) {
 		}
 	}
 	return rec, nil
+}
+
+//OrderedRecord : it's an ordered (0 based) record, instead of map
+type OrderedRecord []interface{}
+
+//ReadOrdered - read record in an ordered manner - integer index (0 based)
+func (r *Reader) ReadOrdered(i int) (orec OrderedRecord, err error) {
+	rec, err := r.Read(i)
+	if err != nil {
+		return nil, err
+	}
+	orec = make([]interface{}, 0, r.headerlen/32)
+	fns := r.FieldNames()
+	for i := range fns {
+		orec = append(orec, rec[fns[i]])
+	}
+	return orec, nil
 }
