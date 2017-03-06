@@ -21,9 +21,30 @@ import (
 )
 
 //FlagDateAssql : read date in a near good sql format
+//FlagSkipWeird : skip some weird records (sigh - some clipper rubbish)
 const (
-	FlagDateAssql = 1
+	FlagDateAssql   = 1
+	FlagSkipWeird   = 2
+	FlagSkipDeleted = 4
 )
+
+//SkipError - use type assertion to detect skip - see FlagSkipWeird and other Skip cases
+type SkipError struct {
+	msg string
+}
+
+func (s *SkipError) Error() string {
+	return s.msg
+}
+
+//EOFError : returns an Eof signal through type assertion
+type EOFError struct {
+	msg string
+}
+
+func (e *EOFError) Error() string {
+	return e.msg
+}
 
 //Reader structure
 type Reader struct {
@@ -168,8 +189,18 @@ func (r *Reader) Read(i int) (rec Record, err error) {
 	if err = binary.Read(r.r, binary.LittleEndian, &deleted); err != nil {
 		return nil, err
 	} else if deleted == 0x1a {
+		if r.flags&FlagSkipWeird != 0 {
+			ers := new(SkipError)
+			ers.msg = "SKIP"
+			return nil, ers
+		}
 		return nil, fmt.Errorf("EOF")
 	} else if deleted == '*' {
+		if r.flags&FlagSkipDeleted != 0 {
+			ers := new(SkipError)
+			ers.msg = "SKIP"
+			return nil, ers
+		}
 		return nil, fmt.Errorf("Deleted: record %d is deleted", i)
 	} else if deleted != ' ' {
 		return nil, fmt.Errorf("Error: Record %d contained an unexpected value in the deleted flag: %x", i, deleted)
