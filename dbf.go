@@ -167,10 +167,12 @@ func (r *Reader) Read(i int) (rec Record, err error) {
 	var deleted byte
 	if err = binary.Read(r.r, binary.LittleEndian, &deleted); err != nil {
 		return nil, err
+	} else if deleted == 0x1a {
+		return nil, fmt.Errorf("EOF")
 	} else if deleted == '*' {
-		return nil, fmt.Errorf("record %d is deleted", i)
+		return nil, fmt.Errorf("Deleted: record %d is deleted", i)
 	} else if deleted != ' ' {
-		return nil, fmt.Errorf("record %d contained an unexpected value in the deleted flag: %x", i, deleted)
+		return nil, fmt.Errorf("Error: Record %d contained an unexpected value in the deleted flag: %x", i, deleted)
 	}
 	rec = make(Record)
 	for i, f := range r.fields {
@@ -182,8 +184,13 @@ func (r *Reader) Read(i int) (rec Record, err error) {
 		switch f.Type {
 		case 'F': //Float
 			rec[r.FieldName(i)], err = strconv.ParseFloat(fieldVal, 64)
-		case 'N': //Numeric
-			rec[r.FieldName(i)], err = strconv.Atoi(fieldVal)
+		case 'N': //Numeric - dbf (mostrly, sigh) treats empty numeric fields as 0
+			if fieldVal == "" {
+				rec[r.FieldName(i)] = 0
+				err = nil
+			} else {
+				rec[r.FieldName(i)], err = strconv.Atoi(fieldVal)
+			}
 		case 'L': //Logical, T,F or Space (ternary) - sorry, you've got to rune
 			switch {
 			case fieldVal == "Y" || fieldVal == "T":
