@@ -46,6 +46,15 @@ func (e *EOFError) Error() string {
 	return e.msg
 }
 
+//DELETEDError : deleted record error
+type DELETEDError struct {
+	msg string
+}
+
+func (d *DELETEDError) Error() string {
+	return d.msg
+}
+
 //Reader structure
 type Reader struct {
 	r                io.ReadSeeker
@@ -114,8 +123,8 @@ func (r *Reader) ModDate() (int, int, int) {
 	return r.year, r.month, r.day
 }
 
-//tillzeo - strcpy like function
-func tillzero(s []byte) (name string) {
+//Tillzero - strcpy like function
+func Tillzero(s []byte) (name string) {
 	for _, val := range string(s) {
 		if val == 0 {
 			return
@@ -147,6 +156,19 @@ func (r *Reader) FieldNames() []string {
 	return names
 }
 
+//FieldInfo : returns the Field's Info
+func (r *Reader) FieldInfo(i int) (*Field, error) {
+	if i >= len(r.fields) {
+		return nil, fmt.Errorf("No Field number: %d", i)
+	}
+	return &r.fields[i], nil
+}
+
+//NumberOfFields : returns the total number of fields
+func (r *Reader) NumberOfFields() int {
+	return len(r.fields)
+}
+
 //SetFlags - set flags to alter behaviour - binary, should be "orred"
 //returns: previous flags
 func (r *Reader) SetFlags(flags int32) int32 {
@@ -161,7 +183,7 @@ func (f *Field) validate() error {
 	case 'C', 'N', 'F', 'L', 'D':
 		return nil
 	}
-	return fmt.Errorf("Sorry, dbf library doesn't recognize field type '%c', Field: '%s'", f.Type, tillzero(f.Name[:]))
+	return fmt.Errorf("Sorry, dbf library doesn't recognize field type '%c', Field: '%s'", f.Type, Tillzero(f.Name[:]))
 }
 
 //Field - field description
@@ -201,7 +223,9 @@ func (r *Reader) Read(i int) (rec Record, err error) {
 			ers.msg = "SKIP"
 			return nil, ers
 		}
-		return nil, fmt.Errorf("Deleted: record %d is deleted", i)
+		erd := new(DELETEDError)
+		erd.msg = fmt.Sprintf("Deleted: record %d is deleted", i)
+		return nil, erd
 	} else if deleted != ' ' {
 		return nil, fmt.Errorf("Error: Record %d contained an unexpected value in the deleted flag: %x", i, deleted)
 	}
@@ -220,7 +244,12 @@ func (r *Reader) Read(i int) (rec Record, err error) {
 				rec[r.FieldName(i)] = 0
 				err = nil
 			} else {
-				rec[r.FieldName(i)], err = strconv.Atoi(fieldVal)
+				//if DecimalPlaces == 0 it's a fixed length integer
+				if f.DecimalPlaces == 0 {
+					rec[r.FieldName(i)], err = strconv.Atoi(fieldVal)
+				} else {
+					rec[r.FieldName(i)], err = strconv.ParseFloat(fieldVal, 64)
+				}
 			}
 		case 'L': //Logical, T,F or Space (ternary) - sorry, you've got to rune
 			switch {
