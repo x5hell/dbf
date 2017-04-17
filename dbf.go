@@ -216,7 +216,9 @@ func (r *Reader) Read(i int) (rec Record, err error) {
 			ers.msg = "SKIP"
 			return nil, ers
 		}
-		return nil, fmt.Errorf("EOF")
+		erf := new(EOFError)
+		erf.msg = "EOF"
+		return nil, erf
 	} else if deleted == '*' {
 		if r.flags&FlagSkipDeleted != 0 {
 			ers := new(SkipError)
@@ -303,7 +305,7 @@ func (r *Reader) ReadOrdered(i int) (orec OrderedRecord, err error) {
 	if err != nil {
 		return nil, err
 	}
-	orec = make([]interface{}, 0, r.headerlen/32)
+	orec = make([]interface{}, 0, len(r.fields))
 	fns := r.FieldNames()
 	for i := range fns {
 		orec = append(orec, rec[fns[i]])
