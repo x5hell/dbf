@@ -1,4 +1,4 @@
-# package for dbf reading in [GO](https://golang.org)
+# Package for dbf reading in [GO](https://golang.org)
 ## A fork to extend the original work by eentzel.
 
 So far, I've added some field types and made some minor tweak changes.
