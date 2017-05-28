@@ -199,6 +199,13 @@ type Field struct {
 //Record http://play.golang.org/p/-CUbdWc6zz
 type Record map[string]interface{}
 
+//errSKIP : returns a brand-new *SkipError
+func errSKIP(s string) *SkipError {
+	ers := new(SkipError)
+	ers.msg = s
+	return ers
+}
+
 //Read - read record i
 func (r *Reader) Read(i int) (rec Record, err error) {
 	var tm time.Time
@@ -212,18 +219,14 @@ func (r *Reader) Read(i int) (rec Record, err error) {
 		return nil, err
 	} else if deleted == 0x1a {
 		if r.flags&FlagSkipWeird != 0 {
-			ers := new(SkipError)
-			ers.msg = "SKIP"
-			return nil, ers
+			return nil, errSKIP("SKIP")
 		}
 		erf := new(EOFError)
 		erf.msg = "EOF"
 		return nil, erf
 	} else if deleted == '*' {
 		if r.flags&FlagSkipDeleted != 0 {
-			ers := new(SkipError)
-			ers.msg = "SKIP"
-			return nil, ers
+			return nil, errSKIP("SKIP")
 		}
 		erd := new(DELETEDError)
 		erd.msg = fmt.Sprintf("Deleted: record %d is deleted", i)
