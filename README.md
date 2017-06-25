@@ -13,7 +13,7 @@ See [DBF File Format](http://www.clicketyclick.dk/databases/xbase/format/index.h
 - added ReadOrdered - it's a wrapper around Read to read the record in an array with tha same field order as the dbf fields
 
 
-- Flags (they should be "orred"):
+- Flags (they should be "orred"), set using dbf.SetFlags(...):
 	- FlagDateAssql : see above
 	- FlagSkipWeird : I've got a malformed dbf with a 0x1a instead of a delete marker, with this flag, it's treated as a deleted record.
 		more "weird" cases could follow, returns a SkipError (you could use type assertion to identify it, _,ok := err.(*SkipError) and so on
