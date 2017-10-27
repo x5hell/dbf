@@ -19,3 +19,4 @@ See [DBF File Format](http://www.clicketyclick.dk/databases/xbase/format/index.h
 		more "weird" cases could follow, returns a SkipError (you could use type assertion to identify it, _,ok := err.(*SkipError) and so on
 	- FlagSkipDeleted : Skip deleted records instead of aborting with an error (this should be changed, sooner or later, maybe something like
 		a "scanner" for sequential reading) returns the same "SkipError"
+	- FlagEmptyDateAsZero : set an empty date as zero "0000-00-00"

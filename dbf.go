@@ -22,10 +22,13 @@ import (
 
 //FlagDateAssql : read date in a near good sql format
 //FlagSkipWeird : skip some weird records (sigh - some clipper rubbish)
+//FlagSkipDeleted : skip deleted records
+//FlagEmptyDateAsZero : empty dates are set as: 0000-00-00 00:00:00
 const (
-	FlagDateAssql   = 1
-	FlagSkipWeird   = 2
-	FlagSkipDeleted = 4
+	FlagDateAssql       = 1
+	FlagSkipWeird       = 2
+	FlagSkipDeleted     = 4
+	FlagEmptyDateAsZero = 8
 )
 
 //SkipError - use type assertion to detect skip - see FlagSkipWeird and other Skip cases
@@ -33,6 +36,7 @@ type SkipError struct {
 	msg string
 }
 
+//Error - interface
 func (s *SkipError) Error() string {
 	return s.msg
 }
@@ -276,7 +280,11 @@ func (r *Reader) Read(i int) (rec Record, err error) {
 				if fieldVal == "" {
 					err = nil
 					if r.flags&FlagDateAssql != 0 {
-						rec[r.FieldName(i)] = ""
+						if r.flags&FlagEmptyDateAsZero != 0 {
+							rec[r.FieldName(i)] = "0000-00-00"
+						} else {
+							rec[r.FieldName(i)] = ""
+						}
 					} else {
 						//this is the zero time, as far the package time, states
 						rec[r.FieldName(i)] = time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC)
