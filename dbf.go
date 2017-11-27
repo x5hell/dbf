@@ -127,7 +127,7 @@ func (r *Reader) ModDate() (int, int, int) {
 	return r.year, r.month, r.day
 }
 
-//Tillzero - strcpy like function
+//Tillzero - strcpy like function, copy a string until rune==0
 func Tillzero(s []byte) (name string) {
 	for _, val := range string(s) {
 		if val == 0 {
@@ -200,7 +200,7 @@ type Field struct {
 	_             [14]byte
 }
 
-//Record http://play.golang.org/p/-CUbdWc6zz
+//Record map is used to hold the dbf's fields
 type Record map[string]interface{}
 
 //errSKIP : returns a brand-new *SkipError
@@ -245,6 +245,7 @@ func (r *Reader) Read(i int) (rec Record, err error) {
 			return nil, err
 		}
 		fieldVal := strings.TrimSpace(string(buf))
+		//decodes the field's type, supported: F,N,D,L,C (defaults to string, anyway)
 		switch f.Type {
 		case 'F': //Float
 			rec[r.FieldName(i)], err = strconv.ParseFloat(fieldVal, 64)
