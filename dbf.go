@@ -20,6 +20,7 @@ import (
 	"time"
 )
 
+// Constants to use with SetFlags, they should be "orred" (a | b | c... and so on)
 //FlagDateAssql : read date in a near good sql format
 //FlagSkipWeird : skip some weird records (sigh - some clipper rubbish)
 //FlagSkipDeleted : skip deleted records
@@ -275,7 +276,6 @@ func (r *Reader) Read(i int) (rec Record, err error) {
 				err = fmt.Errorf("Invalid Logical Field: %s", r.FieldName(i))
 			}
 		case 'D': //Date - YYYYYMMDD - use time.Parse (reference date Jan 2, 2006)
-
 			tm, err = time.Parse("20060102", fieldVal)
 			if err != nil {
 				if fieldVal == "" {
