@@ -101,7 +101,9 @@ func NewReader(r io.ReadSeeker) (*Reader, error) {
 	fields := make([]Field, 0, nfields)
 	for offset := 0; offset < nfields; offset++ {
 		f := Field{}
-		binary.Read(r, binary.LittleEndian, &f)
+		if erbr := binary.Read(r, binary.LittleEndian, &f); erbr != nil {
+			return nil, erbr
+		}
 		if f.Name[1] == '\x0d' { //0x0d (aka: \r) is the official field list terminator
 			break
 		}
@@ -218,7 +220,10 @@ func (r *Reader) Read(i int) (rec Record, err error) {
 	defer r.Unlock()
 
 	offset := int64(r.headerlen) + int64(r.recordlen)*int64(i)
-	r.r.Seek(offset, io.SeekStart)
+	if _, errs := r.r.Seek(offset, io.SeekStart); errs != nil {
+		return nil, errs
+	}
+
 	var deleted byte
 	if err = binary.Read(r.r, binary.LittleEndian, &deleted); err != nil {
 		return nil, err
