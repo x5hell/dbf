@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-// Constants to use with SetFlags, they should be "orred" (a | b | c... and so on)
+// Constants to use with SetFlags, use "or" to combine them (a | b | c... and so on)
 //FlagDateAssql : read date in a near good sql format
 //FlagSkipWeird : skip some weird records (sigh - some clipper rubbish)
 //FlagSkipDeleted : skip deleted records
