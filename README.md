@@ -16,7 +16,8 @@ See [DBF File Format](http://www.clicketyclick.dk/databases/xbase/format/index.h
 
 Most of the changes are made for use in [dbfgo2mysql](https://github.com/squeeze69/dbfgo2mysql), a simple dbf 2 mysql converter (not so simple, actually)
 
-- Flags (they should be combined with "or" (|)), set using dbf.SetFlags(...):
+**Flags** (they should be combined with "or" (|)), set using dbf.SetFlags(...):
+
     - FlagDateAssql : see above
     - FlagSkipWeird : I've got a malformed dbf with a 0x1a instead of a delete marker, with this flag, it's treated as a deleted record. More "weird" cases could follow, returns a SkipError (you could use type assertion to identify it, _,ok := err.(*SkipError) and so on
     - FlagSkipDeleted : Skip deleted records instead of aborting with an error (this should be changed, sooner or later,maybe something like a "scanner" for sequential reading) returns the same "SkipError"
