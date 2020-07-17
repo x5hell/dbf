@@ -255,7 +255,7 @@ func (r *Reader) Read(i int) (rec Record, err error) {
 		switch f.Type {
 		case 'F': //Float
 			rec[r.FieldName(i)], err = strconv.ParseFloat(fieldVal, 64)
-		case 'N', 'I': //Numeric - dbf (mostrly, sigh) treats empty numeric fields as 0
+		case 'N': //Numeric - dbf (mostrly, sigh) treats empty numeric fields as 0
 			if fieldVal == "" {
 				rec[r.FieldName(i)] = 0
 				err = nil
