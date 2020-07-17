@@ -187,7 +187,7 @@ func (r *Reader) SetFlags(flags int32) int32 {
 //validate - check if it's a valid field type
 func (f *Field) validate() error {
 	switch f.Type {
-	case 'C', 'N', 'F', 'L', 'D':
+	case 'C', 'N', 'F', 'L', 'D', 'I':
 		return nil
 	}
 	return fmt.Errorf("Sorry, dbf library doesn't recognize field type '%c', Field: '%s'", f.Type, Tillzero(f.Name[:]))
@@ -255,7 +255,7 @@ func (r *Reader) Read(i int) (rec Record, err error) {
 		switch f.Type {
 		case 'F': //Float
 			rec[r.FieldName(i)], err = strconv.ParseFloat(fieldVal, 64)
-		case 'N': //Numeric - dbf (mostrly, sigh) treats empty numeric fields as 0
+		case 'N', 'I': //Numeric - dbf (mostrly, sigh) treats empty numeric fields as 0
 			if fieldVal == "" {
 				rec[r.FieldName(i)] = 0
 				err = nil
