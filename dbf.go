@@ -215,7 +215,6 @@ func errSKIP(s string) *SkipError {
 
 //Read - read record i
 func (r *Reader) Read(i int) (rec Record, err error) {
-	var tm time.Time
 	r.Lock()
 	defer r.Unlock()
 
@@ -255,6 +254,9 @@ func (r *Reader) Read(i int) (rec Record, err error) {
 		switch f.Type {
 		case 'F': //Float
 			rec[r.FieldName(i)], err = strconv.ParseFloat(fieldVal, 64)
+		case 'I':
+			// I values are stored as numeric values
+			rec[r.FieldName(i)], err = int32(binary.LittleEndian.Uint32(buf)), nil
 		case 'N': //Numeric - dbf (mostrly, sigh) treats empty numeric fields as 0
 			if fieldVal == "" {
 				rec[r.FieldName(i)] = 0
@@ -281,27 +283,10 @@ func (r *Reader) Read(i int) (rec Record, err error) {
 				err = fmt.Errorf("Invalid Logical Field: %s", r.FieldName(i))
 			}
 		case 'D': //Date - YYYYYMMDD - use time.Parse (reference date Jan 2, 2006)
-			tm, err = time.Parse("20060102", fieldVal)
-			if err != nil {
-				if fieldVal == "" {
-					err = nil
-					if r.flags&FlagDateAssql != 0 {
-						if r.flags&FlagEmptyDateAsZero != 0 {
-							rec[r.FieldName(i)] = "0000-00-00"
-						} else {
-							rec[r.FieldName(i)] = ""
-						}
-					} else {
-						//this is the zero time, as far the package time, states
-						rec[r.FieldName(i)] = time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC)
-					}
-				}
+			if string(buf) == strings.Repeat(" ", 8) {
+				rec[r.FieldName(i)], err = nil, nil
 			} else {
-				if r.flags&FlagDateAssql != 0 {
-					rec[r.FieldName(i)] = tm.Format("2006-01-02")
-				} else {
-					rec[r.FieldName(i)] = tm
-				}
+				rec[r.FieldName(i)], err = time.Parse("20060102", fieldVal)
 			}
 		default: //String value (C, padded with blanks) -Notice: blanks removed by the trim above
 			rec[r.FieldName(i)] = fieldVal
