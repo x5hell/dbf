@@ -73,7 +73,7 @@ type Reader struct {
 }
 
 type FilterField struct {
-	FilterList []string
+	FilterList map[string]bool
 	Read       bool
 	Field      Field
 }
@@ -150,7 +150,7 @@ func (r *Reader) SetReadFields(readFields []string) {
 	}
 }
 
-func (r *Reader) SetFilterFields(filterFields map[string][]string)  {
+func (r *Reader) SetFilterFields(filterFields map[string]map[string]bool)  {
 	for fieldNumber, field := range r.fields {
 		fieldName := r.FieldName(fieldNumber)
 		if filters, fieldHasFilter := filterFields[fieldName]; fieldHasFilter {
@@ -209,6 +209,15 @@ func (r *Reader) FieldInfo(i int) (*Field, error) {
 //NumberOfFields : returns the total number of fields
 func (r *Reader) NumberOfFields() int {
 	return len(r.fields)
+}
+
+func (r *Reader) NumberOfReadFields() (readFields int) {
+	for _, field := range r.fields {
+		if field.Read {
+			readFields++
+		}
+	}
+	return readFields
 }
 
 //SetFlags - set flags to alter behaviour - binary, should be "orred"
@@ -291,7 +300,7 @@ func (r *Reader) Read(i int) (rec Record, err error) {
 			fieldVal := strings.TrimSpace(string(buf))
 			if len(field.FilterList) > 0 {
 				filtered := false
-				for _, filter := range field.FilterList {
+				for filter, _ := range field.FilterList {
 					if filter == fieldVal {
 						filtered = true
 					}
