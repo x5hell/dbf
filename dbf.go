@@ -300,11 +300,7 @@ func (r *Reader) Read(i int) (rec Record, err error) {
 			fieldVal := strings.TrimSpace(string(buf))
 			if len(field.FilterList) > 0 {
 				filtered := false
-				for filter, _ := range field.FilterList {
-					if filter == fieldVal {
-						filtered = true
-					}
-				}
+				_, filtered = field.FilterList[fieldVal]
 				if filtered == false {
 					return nil, nil
 				}
