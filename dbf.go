@@ -65,11 +65,17 @@ type Reader struct {
 	r                io.ReadSeeker
 	year, month, day int
 	Length           int // number of records
-	fields           []Field
+	fields           []FilterField
 	headerlen        uint16 // in bytes
 	recordlen        uint16 // length of each record, in bytes
 	flags            int32  //general purpose flags - see constant
 	sync.Mutex
+}
+
+type FilterField struct {
+	FilterList []string
+	Read       bool
+	Field      Field
 }
 
 type header struct {
@@ -113,6 +119,11 @@ func NewReader(r io.ReadSeeker) (*Reader, error) {
 		fields = append(fields, f)
 	}
 
+	var filterFields []FilterField
+	for _, field := range fields {
+		filterFields = append(filterFields, FilterField{Field: field, Read: true})
+	}
+
 	br := bufio.NewReader(r)
 	if eoh, err := br.ReadByte(); err != nil {
 		return nil, err
@@ -121,8 +132,32 @@ func NewReader(r io.ReadSeeker) (*Reader, error) {
 	}
 
 	return &Reader{r, 1900 + int(h.Year),
-		int(h.Month), int(h.Day), int(h.Nrec), fields,
+		int(h.Month), int(h.Day), int(h.Nrec), filterFields,
 		h.Headerlen, h.Recordlen, 0, *new(sync.Mutex)}, nil
+}
+
+func (r *Reader) SetReadFields(readFields []string) {
+	for fieldNumber, field := range r.fields {
+		fieldName := r.FieldName(fieldNumber)
+		readField := false
+		for _, readFieldName := range readFields {
+			if readFieldName == fieldName {
+				readField = true
+			}
+		}
+		field.Read = readField
+		r.fields[fieldNumber] = field
+	}
+}
+
+func (r *Reader) SetFilterFields(filterFields map[string][]string)  {
+	for fieldNumber, field := range r.fields {
+		fieldName := r.FieldName(fieldNumber)
+		if filters, fieldHasFilter := filterFields[fieldName]; fieldHasFilter {
+			field.FilterList = filters
+		}
+		r.fields[fieldNumber] = field
+	}
 }
 
 //ModDate - modification date
@@ -144,7 +179,7 @@ func Tillzero(s []byte) (name string) {
 //FieldName retrieves field name - check for NULL (0x00) termination
 // specs says that it should be 0x00 padded, but it's not always true
 func (r *Reader) FieldName(i int) (name string) {
-	for _, val := range string(r.fields[i].Name[:]) {
+	for _, val := range string(r.fields[i].Field.Name[:]) {
 		if val == 0 {
 			return
 		}
@@ -168,7 +203,7 @@ func (r *Reader) FieldInfo(i int) (*Field, error) {
 	if i >= len(r.fields) {
 		return nil, fmt.Errorf("No Field number: %d", i)
 	}
-	return &r.fields[i], nil
+	return &r.fields[i].Field, nil
 }
 
 //NumberOfFields : returns the total number of fields
@@ -223,76 +258,98 @@ func (r *Reader) Read(i int) (rec Record, err error) {
 		return nil, errs
 	}
 
-	var deleted byte
-	if err = binary.Read(r.r, binary.LittleEndian, &deleted); err != nil {
+	deleted := make([]byte, 1)
+	if _, err = io.ReadFull(r.r, deleted); err != nil {
 		return nil, err
-	} else if deleted == 0x1a {
+	} else if deleted[0] == 0x1a {
 		if r.flags&FlagSkipWeird != 0 {
 			return nil, errSKIP("SKIP")
 		}
 		erf := new(EOFError)
 		erf.msg = "EOF"
 		return nil, erf
-	} else if deleted == '*' {
+	} else if deleted[0] == '*' {
 		if r.flags&FlagSkipDeleted != 0 {
 			return nil, errSKIP("SKIP")
 		}
 		erd := new(DELETEDError)
 		erd.msg = fmt.Sprintf("Deleted: record %d is deleted", i)
 		return nil, erd
-	} else if deleted != ' ' {
+	} else if deleted[0] != ' ' {
 		return nil, fmt.Errorf("Error: Record %d contained an unexpected value in the deleted flag: %x", i, deleted)
 	}
+	offset++
 	rec = make(Record)
-	for i, f := range r.fields {
+	for i, field := range r.fields {
+		f := field.Field
 		buf := make([]byte, f.Len)
-		if err = binary.Read(r.r, binary.LittleEndian, &buf); err != nil {
-			return nil, err
-		}
-		fieldVal := strings.TrimSpace(string(buf))
-		//decodes the field's type, supported: F,N,D,L,C (defaults to string, anyway)
-		switch f.Type {
-		case 'F': //Float
-			rec[r.FieldName(i)], err = strconv.ParseFloat(fieldVal, 64)
-		case 'I':
-			// I values are stored as numeric values
-			rec[r.FieldName(i)], err = int32(binary.LittleEndian.Uint32(buf)), nil
-		case 'N': //Numeric - dbf (mostrly, sigh) treats empty numeric fields as 0
-			if fieldVal == "" {
-				rec[r.FieldName(i)] = 0
-				err = nil
-			} else {
-				//if DecimalPlaces == 0 it's a fixed length integer
-				if f.DecimalPlaces == 0 {
-					rec[r.FieldName(i)], err = strconv.Atoi(fieldVal)
-				} else {
-					rec[r.FieldName(i)], err = strconv.ParseFloat(fieldVal, 64)
+		offset = offset + int64(f.Len)
+		if field.Read || len(field.FilterList) > 0 {
+			if _, err = io.ReadFull(r.r, buf); err != nil {
+				return nil, err
+			}
+			fieldVal := strings.TrimSpace(string(buf))
+			if len(field.FilterList) > 0 {
+				filtered := false
+				for _, filter := range field.FilterList {
+					if filter == fieldVal {
+						filtered = true
+					}
+				}
+				if filtered == false {
+					return nil, nil
 				}
 			}
-		case 'L': //Logical, T,F or Space (ternary) - sorry, you've got to rune
-			switch {
-			case fieldVal == "Y" || fieldVal == "T":
-				rec[r.FieldName(i)] = 'T'
-			case fieldVal == "N" || fieldVal == "F":
-				rec[r.FieldName(i)] = 'F'
-				err = nil
-			case fieldVal == "?" || fieldVal == "":
-				rec[r.FieldName(i)] = ' '
-				err = nil
-			default:
-				err = fmt.Errorf("Invalid Logical Field: %s", r.FieldName(i))
+			if field.Read {
+				//decodes the field's type, supported: F,N,D,L,C (defaults to string, anyway)
+				switch f.Type {
+				case 'F': //Float
+					rec[r.FieldName(i)], err = strconv.ParseFloat(fieldVal, 64)
+				case 'I':
+					// I values are stored as numeric values
+					rec[r.FieldName(i)], err = int32(binary.LittleEndian.Uint32(buf)), nil
+				case 'N': //Numeric - dbf (mostrly, sigh) treats empty numeric fields as 0
+					if fieldVal == "" {
+						rec[r.FieldName(i)] = 0
+						err = nil
+					} else {
+						//if DecimalPlaces == 0 it's a fixed length integer
+						if f.DecimalPlaces == 0 {
+							rec[r.FieldName(i)], err = strconv.Atoi(fieldVal)
+						} else {
+							rec[r.FieldName(i)], err = strconv.ParseFloat(fieldVal, 64)
+						}
+					}
+				case 'L': //Logical, T,F or Space (ternary) - sorry, you've got to rune
+					switch {
+					case fieldVal == "Y" || fieldVal == "T":
+						rec[r.FieldName(i)] = 'T'
+					case fieldVal == "N" || fieldVal == "F":
+						rec[r.FieldName(i)] = 'F'
+						err = nil
+					case fieldVal == "?" || fieldVal == "":
+						rec[r.FieldName(i)] = ' '
+						err = nil
+					default:
+						err = fmt.Errorf("Invalid Logical Field: %s", r.FieldName(i))
+					}
+				case 'D': //Date - YYYYYMMDD - use time.Parse (reference date Jan 2, 2006)
+					if string(buf) == strings.Repeat(" ", 8) {
+						rec[r.FieldName(i)], err = nil, nil
+					} else {
+						rec[r.FieldName(i)], err = time.Parse("20060102", fieldVal)
+					}
+				default: //String value (C, padded with blanks) -Notice: blanks removed by the trim above
+					rec[r.FieldName(i)] = fieldVal
+				}
+				if err != nil {
+					return nil, err
+				}
 			}
-		case 'D': //Date - YYYYYMMDD - use time.Parse (reference date Jan 2, 2006)
-			if string(buf) == strings.Repeat(" ", 8) {
-				rec[r.FieldName(i)], err = nil, nil
-			} else {
-				rec[r.FieldName(i)], err = time.Parse("20060102", fieldVal)
+		} else {
+			if _, errs := r.r.Seek(offset, io.SeekStart); errs != nil {
+				return nil, errs
 			}
-		default: //String value (C, padded with blanks) -Notice: blanks removed by the trim above
-			rec[r.FieldName(i)] = fieldVal
-		}
-		if err != nil {
-			return nil, err
 		}
 	}
 	return rec, nil
