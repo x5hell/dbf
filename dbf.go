@@ -73,9 +73,14 @@ type Reader struct {
 }
 
 type FilterField struct {
-	FilterList map[string]bool
-	Read       bool
-	Field      Field
+	Filter Filter
+	Read   bool
+	Field  Field
+}
+
+type Filter struct {
+	Condition string
+	Value string
 }
 
 type header struct {
@@ -150,11 +155,11 @@ func (r *Reader) SetReadFields(readFields []string) {
 	}
 }
 
-func (r *Reader) SetFilterFields(filterFields map[string]map[string]bool)  {
+func (r *Reader) SetFilter(filterFields map[string]Filter)  {
 	for fieldNumber, field := range r.fields {
 		fieldName := r.FieldName(fieldNumber)
 		if filters, fieldHasFilter := filterFields[fieldName]; fieldHasFilter {
-			field.FilterList = filters
+			field.Filter = filters
 		}
 		r.fields[fieldNumber] = field
 	}
@@ -293,60 +298,22 @@ func (r *Reader) Read(i int) (rec Record, err error) {
 		f := field.Field
 		buf := make([]byte, f.Len)
 		offset = offset + int64(f.Len)
-		if field.Read || len(field.FilterList) > 0 {
+		if field.Read || field.Filter.Value != "" {
 			if _, err = io.ReadFull(r.r, buf); err != nil {
 				return nil, err
 			}
-			fieldVal := strings.TrimSpace(string(buf))
-			if len(field.FilterList) > 0 {
-				filtered := false
-				_, filtered = field.FilterList[fieldVal]
+			if field.Filter.Value != "" {
+				filtered, err := filterValue(field, buf)
+				if err != nil {
+					return nil, err
+				}
 				if filtered == false {
 					return nil, nil
 				}
 			}
 			if field.Read {
 				//decodes the field's type, supported: F,N,D,L,C (defaults to string, anyway)
-				switch f.Type {
-				case 'F': //Float
-					rec[r.FieldName(i)], err = strconv.ParseFloat(fieldVal, 64)
-				case 'I':
-					// I values are stored as numeric values
-					rec[r.FieldName(i)], err = int32(binary.LittleEndian.Uint32(buf)), nil
-				case 'N': //Numeric - dbf (mostrly, sigh) treats empty numeric fields as 0
-					if fieldVal == "" {
-						rec[r.FieldName(i)] = 0
-						err = nil
-					} else {
-						//if DecimalPlaces == 0 it's a fixed length integer
-						if f.DecimalPlaces == 0 {
-							rec[r.FieldName(i)], err = strconv.Atoi(fieldVal)
-						} else {
-							rec[r.FieldName(i)], err = strconv.ParseFloat(fieldVal, 64)
-						}
-					}
-				case 'L': //Logical, T,F or Space (ternary) - sorry, you've got to rune
-					switch {
-					case fieldVal == "Y" || fieldVal == "T":
-						rec[r.FieldName(i)] = 'T'
-					case fieldVal == "N" || fieldVal == "F":
-						rec[r.FieldName(i)] = 'F'
-						err = nil
-					case fieldVal == "?" || fieldVal == "":
-						rec[r.FieldName(i)] = ' '
-						err = nil
-					default:
-						err = fmt.Errorf("Invalid Logical Field: %s", r.FieldName(i))
-					}
-				case 'D': //Date - YYYYYMMDD - use time.Parse (reference date Jan 2, 2006)
-					if string(buf) == strings.Repeat(" ", 8) {
-						rec[r.FieldName(i)], err = nil, nil
-					} else {
-						rec[r.FieldName(i)], err = time.Parse("20060102", fieldVal)
-					}
-				default: //String value (C, padded with blanks) -Notice: blanks removed by the trim above
-					rec[r.FieldName(i)] = fieldVal
-				}
+				rec[r.FieldName(i)], err = getFieldValueCasting(f, buf)
 				if err != nil {
 					return nil, err
 				}
@@ -359,6 +326,118 @@ func (r *Reader) Read(i int) (rec Record, err error) {
 	}
 	return rec, nil
 }
+
+func filterValue(filteredField FilterField, buf []byte) (filtered bool, err error) {
+	fieldValue, err := getFieldValueCasting(filteredField.Field, buf)
+	if err != nil {
+		return false, err
+	}
+	switch fieldValue.(type) {
+		case string:
+			switch filteredField.Filter.Condition {
+				case "=":
+					return fieldValue == filteredField.Filter.Value, nil
+				default:
+					return false,
+					fmt.Errorf("wrong filter condition operation (%s) for field %s (%s)",
+						filteredField.Filter.Condition,
+						filteredField.Field.Name,
+						"string")
+			}
+		case time.Time:
+			fieldValueTime := fieldValue.(time.Time)
+			filterValue, err := time.Parse("2006-01-02", filteredField.Filter.Value)
+			if err != nil {
+				return false,
+					fmt.Errorf(
+						"wrong filter type for field %s (format needed %s)",
+						filteredField.Field.Name,
+						"Y-m-d")
+			}
+			switch filteredField.Filter.Condition {
+				case "=":
+					return fieldValueTime.Equal(filterValue), nil
+				case ">":
+					return fieldValueTime.After(filterValue), nil
+				case "<":
+					return fieldValueTime.Before(filterValue), nil
+				default:
+					return false,
+						fmt.Errorf("wrong filter condition operation (%s) for field %s (%s)",
+							filteredField.Filter.Condition,
+							filteredField.Field.Name,
+							"time.Time")
+			}
+		case int:
+			fieldValueInt := fieldValue.(int)
+			filterValue, err := strconv.Atoi(filteredField.Filter.Value)
+			if err != nil {
+				return false,
+					fmt.Errorf("wrong filter type for field %s (format needed %s)",
+						filteredField.Field.Name,
+						"int")
+			}
+			switch filteredField.Filter.Condition {
+				case "=":
+					return fieldValueInt == filterValue, nil
+				case ">":
+					return fieldValueInt > filterValue, nil
+				case "<":
+					return fieldValueInt < filterValue, nil
+				default:
+					return false,
+						fmt.Errorf("wrong filter condition operation (%s) for field %s (%s)",
+							filteredField.Filter.Condition,
+							filteredField.Field.Name,
+							"int")
+			}
+		default:
+			return false, fmt.Errorf("unsupported filter type for field %s", filteredField.Field.Name)
+	}
+}
+
+func getFieldValueCasting(f Field, buf []byte) (fieldCasting interface{}, err error) {
+	fieldVal := strings.TrimSpace(string(buf))
+	switch f.Type {
+		case 'F': //Float
+			return strconv.ParseFloat(fieldVal, 64)
+		case 'I':
+			// I values are stored as numeric values
+			return int32(binary.LittleEndian.Uint32(buf)), nil
+		case 'N': //Numeric - dbf (mostrly, sigh) treats empty numeric fields as 0
+			if fieldVal == "" {
+				return 0, nil
+			} else {
+				//if DecimalPlaces == 0 it's a fixed length integer
+				if f.DecimalPlaces == 0 {
+					return strconv.Atoi(fieldVal)
+				} else {
+					return strconv.ParseFloat(fieldVal, 64)
+				}
+			}
+		case 'L': //Logical, T,F or Space (ternary) - sorry, you've got to rune
+			switch {
+			case fieldVal == "Y" || fieldVal == "T":
+				return 'T', nil
+			case fieldVal == "N" || fieldVal == "F":
+				return 'F', nil
+			case fieldVal == "?" || fieldVal == "":
+				return ' ',nil
+			default:
+				return nil, fmt.Errorf("invalid Logical Field: %s", f.Name)
+			}
+		case 'D': //Date - YYYYYMMDD - use time.Parse (reference date Jan 2, 2006)
+			if string(buf) == strings.Repeat(" ", 8) {
+				return nil, nil
+			} else {
+				return time.Parse("20060102", fieldVal)
+			}
+		default: //String value (C, padded with blanks) -Notice: blanks removed by the trim above
+			return fieldVal, err
+	}
+}
+
+
 
 //OrderedRecord : it's an ordered (0 based) record, instead of map
 type OrderedRecord []interface{}
